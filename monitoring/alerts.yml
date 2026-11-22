@@ -1,0 +1,33 @@
+groups:
+  - name: tienda-sla
+    rules:
+      - alert: ApiDown
+        expr: up{job="tienda-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "La API de la tienda no responde"
+          description: "Prometheus no puede leer /metrics desde hace más de 1 minuto (SLA de disponibilidad 99.5 %)."
+
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_request_duration_seconds_count{status=~"5.."}[5m]))
+            / sum(rate(http_request_duration_seconds_count[5m])) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Más del 1 % de las peticiones terminan en error 5xx"
+          description: "La tasa de errores superó el objetivo durante 5 minutos."
+
+      - alert: HighLatencyP95
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(http_request_duration_seconds_bucket[5m]))) > 0.3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "La latencia p95 supera 300 ms"
+          description: "El percentil 95 de respuesta excedió el objetivo del SLA durante 5 minutos."

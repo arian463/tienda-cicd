@@ -1,0 +1,5 @@
+node_modules/
+.env
+.current_tag
+.previous_tag
+*.log
