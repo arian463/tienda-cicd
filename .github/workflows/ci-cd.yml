@@ -55,26 +55,39 @@ jobs:
 
   staging:
     needs: build
-    uses: ./.github/workflows/deploy.yml
-    with:
-      environment: staging
-      image: ${{ needs.build.outputs.image }}
-      tag: ${{ needs.build.outputs.tag }}
-      read_only: false
-    secrets: inherit
+    runs-on: [self-hosted, linux]
+    environment: staging
     permissions:
       contents: read
       packages: read
+    env:
+      ENVIRONMENT: staging
+      IMAGE: ${{ needs.build.outputs.image }}
+      TAG: ${{ needs.build.outputs.tag }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+      BASE_URL: ${{ vars.BASE_URL || 'http://localhost:3000' }}
+    steps:
+      - uses: actions/checkout@v4
 
-  production:
-    needs: [build, staging]
-    uses: ./.github/workflows/deploy.yml
-    with:
-      environment: production
-      image: ${{ needs.build.outputs.image }}
-      tag: ${{ needs.build.outputs.tag }}
-      read_only: true
-    secrets: inherit
-    permissions:
-      contents: read
-      packages: read
+      - name: Iniciar sesión en GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+      - name: Copiar archivos de despliegue
+        run: bash scripts/pipeline/stage-files.sh
+
+      - name: Generar el entorno
+        run: bash "$DEPLOY_PATH/scripts/environment/provision.sh"
+
+      - name: Desplegar versión
+        run: bash "$DEPLOY_PATH/scripts/deploy/deploy.sh"
+
+      - name: Pruebas de humo
+        env:
+          EXPECTED_VERSION: ${{ needs.build.outputs.tag }}
+        run: bash scripts/tests/smoke-test.sh
+
+      - name: Chequeo de niveles de servicio
+        run: bash scripts/tests/sla-check.sh
